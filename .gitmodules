@@ -1,0 +1,3 @@
+[submodule "ADFQ"]
+	path = ADFQ
+	url = https://github.com/coco66/ADFQ.git

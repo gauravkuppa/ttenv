@@ -1,9 +1,10 @@
 import ttenv
 import numpy as np
 import argparse
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--env', help='environment ID', type=str, default='TargetTracking-v1')
+parser.add_argument('--env', help='environment ID', type=str, default='TargetTracking-v0')
 parser.add_argument('--render', help='whether to render', type=int, default=0)
 parser.add_argument('--record', help='whether to record', type=int, default=0)
 parser.add_argument('--ros', help='whether to use ROS', type=int, default=0)
@@ -28,7 +29,7 @@ def main():
                     )
 
     np.random.seed(args.seed)
-    for _ in range(args.repeat):
+    for _ in tqdm(range(args.repeat)):
         nlogdetcov = []
         obs, done = env.reset(), False
         while(not done):

@@ -82,3 +82,37 @@ If you use this repo in your research, you can cite it as follows:
     journal = {GitHub repository},
     howpublished = {\url{https://github.com/coco66/ttenv.git}},
 }
+```
+
+## Code Mapping to Papers
+```
+ttenv/ADFQ/:
+	Dockerfile	
+	__init__.py	
+	deep_adfq/	
+	setup
+	README.md	
+	classic_adfq/	
+	envs/
+
+ttenv/TargetTracking-v1_<date>/:
+	learning_prop.json	notes.txt		seed_0
+
+
+ttenv/ttenv/:
+    __init__.py		
+    display_wrapper.py
+    target_imtracking.py	
+    infoplanner_python	
+    target_tracking.py
+    maps/	
+    test_util.py
+    agent_models.py		
+    metadata.py		
+    util.py
+    base.py			
+    policies.py
+    belief_tracker.py	
+    ros_wrapper.py
+
+```

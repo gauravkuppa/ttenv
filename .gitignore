@@ -1,1 +1,6 @@
 *.pyc
+Target*
+*.mp4
+train*
+trial*/*
+wandb/*
