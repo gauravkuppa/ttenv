@@ -38,16 +38,19 @@ class Display2D(Wrapper):
             target_true_pos = [self.env_core.targets[i].state[:2] for i in range(self.env_core.num_targets)]
         else:
             target_true_pos = self.env_core.targets.state[:,:2]
-
-        self.traj[0].append(self.env_core.agent.state[0])
-        self.traj[1].append(self.env_core.agent.state[1])
+        for i in range(self.env_core.num_agents):
+            self.traj[0].append(self.env_core.agent[i].state[0])
+            self.traj[1].append(self.env_core.agent[i].state[1])
         for i in range(self.env_core.num_targets):
             self.traj_y[i][0].append(target_true_pos[i][0])
             self.traj_y[i][1].append(target_true_pos[i][1])
         return self.env.step(action)
 
     def render(self, record=False, batch_outputs=None):
-        state = self.env_core.agent.state
+        if type(self.env_core.targets) == list:
+            state = [self.env_core.agent[i].state for i in range(self.env_core.num_agents)]
+        else:
+            state = self.env_core.agent.state
         num_targets = len(self.traj_y)
         if type(self.env_core.targets) == list:
             target_true_pos = [self.env_core.targets[i].state[:2] for i in range(num_targets)]
@@ -86,9 +89,10 @@ class Display2D(Wrapper):
                         vmin=0, vmax=2, extent=[self.mapmin[0], self.mapmax[0],
                                                 self.mapmin[1], self.mapmax[1]])
 
-            ax.plot(state[0], state[1], marker=(3, 0, state[2]/np.pi*180-90),
-                        markersize=10, linestyle='None', markerfacecolor='b',
-                        markeredgecolor='b')
+            for i in range(self.env_core.num_agents):
+                ax.plot(state[i][0], state[i][1], marker=(3, 0, state[i][2]/np.pi*180-90),
+                            markersize=10, linestyle='None', markerfacecolor='b',
+                            markeredgecolor='b')
             ax.plot(self.traj[0], self.traj[1], 'b.', markersize=2)
 
             for i in range(num_targets):
@@ -135,17 +139,18 @@ class Display2D(Wrapper):
                                             angle=(state[2]-np.pi/2)/np.pi*180,
                                             fill=False, edgecolor='b')
                     ax.add_patch(local_rect)
-
-            sensor_arc = patches.Arc((state[0], state[1]), METADATA['sensor_r']*2, METADATA['sensor_r']*2,
-                angle = state[2]/np.pi*180, theta1 = -METADATA['fov']/2, theta2 = METADATA['fov']/2, facecolor='gray')
-            ax.add_patch(sensor_arc)
-            ax.plot([state[0], state[0]+METADATA['sensor_r']*np.cos(state[2]+0.5*METADATA['fov']/180.0*np.pi)],
-                [state[1], state[1]+METADATA['sensor_r']*np.sin(state[2]+0.5*METADATA['fov']/180.0*np.pi)],'k', linewidth=0.5)
-            ax.plot([state[0], state[0]+METADATA['sensor_r']*np.cos(state[2]-0.5*METADATA['fov']/180.0*np.pi)],
-                [state[1], state[1]+METADATA['sensor_r']*np.sin(state[2]-0.5*METADATA['fov']/180.0*np.pi)],'k', linewidth=0.5)
+            for i in range(self.env_core.num_agents):
+                
+                sensor_arc = patches.Arc((state[i][0], state[i][1]), METADATA['sensor_r']*2, METADATA['sensor_r']*2,
+                    angle = state[i][2]/np.pi*180, theta1 = -METADATA['fov']/2, theta2 = METADATA['fov']/2, facecolor='gray')
+                ax.add_patch(sensor_arc)
+                ax.plot([state[i][0], state[i][0]+METADATA['sensor_r']*np.cos(state[i][2]+0.5*METADATA['fov']/180.0*np.pi)],
+                    [state[i][1], state[i][1]+METADATA['sensor_r']*np.sin(state[i][2]+0.5*METADATA['fov']/180.0*np.pi)],'k', linewidth=0.5)
+                ax.plot([state[i][0], state[i][0]+METADATA['sensor_r']*np.cos(state[i][2]-0.5*METADATA['fov']/180.0*np.pi)],
+                    [state[i][1], state[i][1]+METADATA['sensor_r']*np.sin(state[i][2]-0.5*METADATA['fov']/180.0*np.pi)],'k', linewidth=0.5)
 
             ax.text(self.mapmax[0]+1., self.mapmax[1]-5., 'v_target:%.2f'%np.sqrt(np.sum(self.env_core.targets[0].state[2:]**2)))
-            ax.text(self.mapmax[0]+1., self.mapmax[1]-10., 'v_agent:%.2f'%self.env_core.agent.vw[0])
+            ax.text(self.mapmax[0]+1., self.mapmax[1]-10., 'v_agent:%.2f'%self.env_core.agent[0].vw[0])
             ax.set_xlim((self.mapmin[0], self.mapmax[0]))
             ax.set_ylim((self.mapmin[1], self.mapmax[1]))
             ax.set_title("Trajectory %d"%self.traj_num)

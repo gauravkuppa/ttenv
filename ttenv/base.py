@@ -69,13 +69,15 @@ class TargetTrackingBase(gym.Env):
     def step(self, action):
         # The agent performs an action (t -> t+1)
         action_vw = self.action_map[action]
-        is_col = self.agent.update(action_vw, [t.state[:2] for t in self.targets])
-        self.num_collisions += int(is_col)
+        for i in range(self.num_agents):
+            is_col = self.agent[i].update(action_vw, [t.state[:2] for t in self.targets])
+            self.num_collisions += int(is_col)
 
         # The targets move (t -> t+1)
         for i in range(self.num_targets):
-            if self.has_discovered[i]:
-                self.targets[i].update(self.agent.state[:2])
+            for j in range(self.num_agents):
+                if self.has_discovered[i]:
+                    self.targets[i].update(self.agent[j].state[:2])
 
         # The targets are observed by the agent (z_t+1) and the beliefs are updated.
         observed = self.observe_and_update_belief()
@@ -203,6 +205,7 @@ class TargetTrackingBase(gym.Env):
             3) the number of target independent variables
         """
         new_state = []
+
         for i in range(self.num_targets):
             self.logdetcov_history[i].add(state[num_target_dep_vars*i+logdetcov_idx])
             new_state = np.concatenate((new_state, state[num_target_dep_vars*i: num_target_dep_vars*i+logdetcov_idx]))
@@ -218,13 +221,13 @@ class TargetTrackingBase(gym.Env):
                                 path=target_path[i]) for i in range(self.num_targets)]
         self.targets = targets
 
-    def observation(self, target):
+    def observation(self, target, agent):
         r, alpha = util.relative_distance_polar(target.state[:2],
-                                            xy_base=self.agent.state[:2],
-                                            theta_base=self.agent.state[2])
+                                            xy_base=agent.state[:2],
+                                            theta_base=agent.state[2])
         observed = (r <= self.sensor_r) \
                     & (abs(alpha) <= self.fov/2/180*np.pi) \
-                    & (not(self.MAP.is_blocked(self.agent.state, target.state)))
+                    & (not(self.MAP.is_blocked(agent.state, target.state)))
         z = None
         if observed:
             z = np.array([r, alpha])
@@ -239,12 +242,13 @@ class TargetTrackingBase(gym.Env):
     def observe_and_update_belief(self):
         observed = []
         for i in range(self.num_targets):
-            observation = self.observation(self.targets[i])
-            observed.append(observation[0])
-            if observation[0]: # if observed, update the target belief.
-                self.belief_targets[i].update(observation[1], self.agent.state)
-                if not(self.has_discovered[i]):
-                    self.has_discovered[i] = 1
+            for j in range(self.num_agents):
+                observation = self.observation(self.targets[i], self.agent[j])
+                observed.append(observation[0])
+                if observation[0]: # if observed, update the target belief.
+                    self.belief_targets[i].update(observation[1], self.agent[j].state)
+                    if not(self.has_discovered[i]):
+                        self.has_discovered[i] = 1
         return observed
 
     def get_reward(self, is_training=True, **kwargs):

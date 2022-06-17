@@ -51,6 +51,8 @@ def make(env_name, render=False, figID=0, record=False, ros=False, directory='',
     elif env_name == 'TargetTracking-info2':
         from ttenv.infoplanner_python.target_tracking_infoplanner import TargetTrackingInfoPlanner2
         env0 = TargetTrackingInfoPlanner2(num_targets=num_targets, **kwargs)
+    elif env_name == "TargetTracking-MultiAgent":
+        env0 = target_tracking.TargetTrackingEnvMultiAgent(num_targets=num_targets, **kwargs)
     else:
         raise ValueError('No such environment exists.')
 

@@ -1,0 +1,5 @@
+[default]
+entity = gakuppa
+project = deep_adfq_tracking
+base_url = https://api.wandb.ai
+

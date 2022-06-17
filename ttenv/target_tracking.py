@@ -463,3 +463,131 @@ class TargetTrackingEnv3(TargetTrackingBase):
         # Update the visit map when there is any target not observed for the evaluation purpose.
         if self.MAP.visit_map is not None:
             self.MAP.update_visit_freq_map(self.agent.state, 1.0, observed=bool(np.mean(observed)))
+
+class TargetTrackingEnvMultiAgent(TargetTrackingBase):
+    def __init__(self, num_targets=2, num_agents=2, map_name='empty', is_training=True, known_noise=True, **kwargs):
+        TargetTrackingEnv0.__init__(self, num_targets=num_targets,
+            map_name=map_name, is_training=is_training, known_noise=known_noise, **kwargs)
+        self.id = 'TargetTracking-MultiAgent'
+        self.target_dim = 5
+        self.target_init_vel = np.array(METADATA['target_init_vel'])
+        self.num_agents = num_agents
+        # Set limits.   
+        self.set_limits()
+
+        # Build an agent, targets, and beliefs.
+        self.build_models(const_q=METADATA['const_q'], known_noise=known_noise)
+    
+    def set_limits(self, target_speed_limit=None):
+        if self.target_dim != 5: # TODO: why?
+            return
+        
+        self.num_target_dep_vars = 6
+        self.num_target_indep_vars = 2
+
+        if target_speed_limit is None:
+            self.target_speed_limit = np.random.choice([1.0, 3.0])
+        else:
+            self.target_speed_limit = target_speed_limit
+        self.limit = {} # 0: low, 1:highs
+        rel_speed_limit = self.target_speed_limit + METADATA['action_v'][0]
+        self.limit['agent'] = [np.concatenate((self.MAP.mapmin,[-np.pi])), np.concatenate((self.MAP.mapmax, [np.pi]))]
+        self.limit['target'] = [np.concatenate((self.MAP.mapmin, [-np.pi, -self.target_speed_limit, -np.pi])),
+                                            np.concatenate((self.MAP.mapmax, [np.pi, self.target_speed_limit, np.pi]))]
+        self.limit['state'] = [np.concatenate(([0.0, -np.pi, -rel_speed_limit, -10*np.pi, -50.0, 0.0]*self.num_targets, [0.0, -np.pi ])),
+                               np.concatenate(([600.0, np.pi, rel_speed_limit, 10*np.pi, 50.0, 2.0]*self.num_targets, [self.sensor_r, np.pi]))]
+        self.observation_space = spaces.Box(self.limit['state'][0], self.limit['state'][1], dtype=np.float32)
+
+    def build_models(self, const_q=None, known_noise=True, **kwargs):
+        if self.target_dim != 5:
+            return
+        if const_q is None:
+            self.const_q = np.random.choice([0.001, 0.1, 1.0])
+        else:
+            self.const_q = const_q
+        
+        self.target_noise_cov = np.zeros((self.target_dim, self.target_dim))
+        for i in range(3):
+            self.target_noise_cov[i, i] = self.const_q * self.sampling_period**3/3
+        self.target_noise_cov[3:, 3:] = self.const_q * \
+                    np.array([[self.sampling_period, self.sampling_period**2/2],
+                        [self.sampling_period**2/2, self.sampling_period]])
+        if known_noise:
+            self.target_true_noise_sd = self.target_noise_cov
+        else:
+            self.target_true_noise_sd = self.const_q_true * \
+                        self.sampling_period * np.eye(self.target_dim)
+        
+        self.agent = [AgentSE2(3, self.sampling_period, self.limit['agent'],
+                            lambda x: self.MAP.is_collision(x)) 
+                            for _ in range(self.num_agents)]
+        self.targets = [AgentSE2(self.target_dim, self.sampling_period, self.limit['target'],
+                        lambda x: self.MAP.is_collision(x),
+                        policy=ConstantPolicy(self.target_noise_cov[3:, 3:]))
+                        for _ in range(self.num_targets)]
+
+        self.belief_targets = [UKFbelief(dim=self.target_dim,
+                            limit=self.limit['target'], fx=SE2DynamicsVel,
+                            W=self.target_noise_cov,
+                            obs_noise_func=self.observation_noise,
+                            collision_func=lambda x: self.MAP.is_collision(x))
+                            for _ in range(self.num_targets)]
+        
+    def reset(self, **kwargs):
+        # Always set the limits first.
+        if 'target_speed_limit' in kwargs:
+            self.set_limits(target_speed_limit=kwargs['target_speed_limit'])
+
+        if 'const_q' in kwargs:
+            self.build_models(const_q=kwargs['const_q'])
+
+        # Reset the agent, targets, and beliefs with sampled initial positions.
+        init_pose = super().reset(**kwargs)
+        for i in range(self.num_agents):
+            self.agent[i].reset(list(np.array(init_pose['agent']) + np.random.random(3)))
+        #from IPython import embed; embed()
+
+        for i in range(self.num_targets):
+            self.belief_targets[i].reset(
+                        init_state=np.concatenate((init_pose['belief_targets'][i], np.zeros(2))),
+                        init_cov=self.target_init_cov)
+            t_init = np.concatenate((init_pose['targets'][i], [self.target_init_vel[0], 0.0]))
+            self.targets[i].reset(t_init)
+            self.targets[i].policy.reset(t_init)
+
+        # The targets are observed by the agent (z_0) and the beliefs are updated (b_0).
+        observed = self.observe_and_update_belief()
+
+        # Predict the target for the next step, b_1|0.
+        for i in range(self.num_targets):
+            self.belief_targets[i].predict()
+
+        # Compute the RL state.
+        self.state_func([0.0, 0.0], observed)
+        return self.state
+
+    def state_func(self, action_vw, observed):
+        # Find the closest obstacle coordinate.
+        #obstacles_pt = self.MAP.get_closest_obstacle(self.agent.state)
+        #if obstacles_pt is None:
+        #    obstacles_pt = (self.sensor_r, np.pi)
+
+        self.state = []
+        # TODO: find distance between multiple agents and multiple targets
+        for i in range(self.num_targets):
+            for j in range(self.num_agents):
+                r_b, alpha_b = util.relative_distance_polar(self.belief_targets[i].state[:2],
+                                                    xy_base=self.agent[j].state[:2],
+                                                    theta_base=self.agent[j].state[2])
+                r_dot_b, alpha_dot_b = util.relative_velocity_polar_se2(
+                                        self.belief_targets[i].state[:3],
+                                        self.belief_targets[i].state[3:],
+                                        self.agent[j].state, action_vw)
+                self.state.extend([r_b, alpha_b, r_dot_b, alpha_dot_b,
+                                        np.log(LA.det(self.belief_targets[i].cov)), float(observed[i])])
+        #self.state.extend([obstacles_pt[0], obstacles_pt[1]])
+        self.state = np.array(self.state)
+        # Update the visit map when there is any target not observed for the evaluation purpose.
+        if self.MAP.visit_map is not None:
+            for i in range(self.num_agents):
+                self.MAP.update_visit_freq_map(self.agent[i].state, 1.0, observed=bool(np.mean(observed)))
