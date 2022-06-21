@@ -36,6 +36,10 @@ class Agent(object):
     def reset(self, init_state):
         self.state = init_state
 
+    def __repr__(self):
+        return f"{self.state}"
+    
+
 class AgentDoubleInt2D(Agent):
     def __init__(self, dim, sampling_period, limit, collision_func,
                     margin=METADATA['margin'], A=None, W=None):

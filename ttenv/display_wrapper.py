@@ -47,7 +47,7 @@ class Display2D(Wrapper):
         return self.env.step(action)
 
     def render(self, record=False, batch_outputs=None):
-        if type(self.env_core.targets) == list:
+        if isinstance(self.env_core.agent, list):
             state = [self.env_core.agent[i].state for i in range(self.env_core.num_agents)]
         else:
             state = self.env_core.agent.state
